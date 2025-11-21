@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# Output directories
+output/
+daily_plot/
+seven_day_envelopes/
+7_day_compressed_sin_fit/
+
+# Data files (optional - uncomment if you don't want to track CSV files)
+# *.csv
+# device_data/*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+

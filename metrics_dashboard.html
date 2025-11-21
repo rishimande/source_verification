@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Metrics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .file-input-container {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 2px dashed #dee2e6;
+        }
+
+        .file-input-container input[type="file"] {
+            margin-top: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-wrapper {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-wrapper h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls input,
+        .controls select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .controls input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        thead {
+            background: #2c3e50;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        th:hover {
+            background: #34495e;
+        }
+
+        th::after {
+            content: ' ↕';
+            opacity: 0.5;
+            font-size: 10px;
+        }
+
+        th.sorted-asc::after {
+            content: ' ↑';
+            opacity: 1;
+        }
+
+        th.sorted-desc::after {
+            content: ' ↓';
+            opacity: 1;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .pass {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .fail {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .empty {
+            color: #95a5a6;
+            font-style: italic;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📊 Daily Metrics Dashboard</h1>
+        <div class="file-input-container">
+            <label for="csvFile"><strong>Load CSV File:</strong></label>
+            <input type="file" id="csvFile" accept=".csv" />
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                Or drag and drop the CSV file here
+            </p>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <div class="stats-grid" id="statsGrid"></div>
+            <div class="charts-container" id="chartsContainer"></div>
+
+            <div class="controls">
+                <input type="text" id="searchInput" placeholder="🔍 Search in table...">
+                <select id="passFilter">
+                    <option value="all">All Status</option>
+                    <option value="pass">Pass Only</option>
+                    <option value="fail">Fail Only</option>
+                </select>
+                <button onclick="exportTable()"
+                    style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Export Filtered CSV
+                </button>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">Select a CSV file to begin</div>
+        <div id="error" class="error" style="display: none;"></div>
+    </div>
+
+    <script>
+        let csvData = [];
+        let filteredData = [];
+        let sortColumn = null;
+        let sortDirection = 'asc';
+        let charts = {};
+
+        // File input handler
+        document.getElementById('csvFile').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                loadCSV(file);
+            }
+        });
+
+        // Drag and drop
+        const fileInput = document.querySelector('.file-input-container');
+        fileInput.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileInput.style.borderColor = '#667eea';
+        });
+        fileInput.addEventListener('dragleave', () => {
+            fileInput.style.borderColor = '#dee2e6';
+        });
+        fileInput.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInput.style.borderColor = '#dee2e6';
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.csv')) {
+                document.getElementById('csvFile').files = e.dataTransfer.files;
+                loadCSV(file);
+            }
+        });
+
+        function loadCSV(file) {
+            document.getElementById('loading').textContent = 'Loading CSV...';
+            document.getElementById('error').style.display = 'none';
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results) {
+                    if (results.errors.length > 0) {
+                        console.warn('CSV parsing warnings:', results.errors);
+                    }
+                    csvData = results.data.filter(row => Object.keys(row).length > 1);
+                    filteredData = [...csvData];
+                    renderDashboard();
+                },
+                error: function (error) {
+                    document.getElementById('error').textContent = 'Error loading CSV: ' + error.message;
+                    document.getElementById('error').style.display = 'block';
+                }
+            });
+        }
+
+        function renderDashboard() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+
+            renderStats();
+            renderCharts();
+            renderTable();
+
+            // Event listeners
+            document.getElementById('searchInput').addEventListener('input', filterTable);
+            document.getElementById('passFilter').addEventListener('change', filterTable);
+        }
+
+        function renderStats() {
+            const stats = {
+                'Total Days': csvData.length,
+                'Pass Rate': calculatePassRate(),
+                'Avg λ (lambda)': calculateAverage('lambda_day'),
+                'Battery Dips': csvData.filter(r => r.detected_battery_dip).length
+            };
+
+            const grid = document.getElementById('statsGrid');
+            grid.innerHTML = Object.entries(stats).map(([key, value]) => `
+                <div class="stat-card">
+                    <h3>${key}</h3>
+                    <div class="value">${typeof value === 'number' ? value.toFixed(2) : value}</div>
+                </div>
+            `).join('');
+        }
+
+        function calculatePassRate() {
+            const passColumns = ['sinusoidality_pass_<=30pct', 'sinusoidality_env_pass_<=30pct',
+                'negative_noise_pass_<=5pct_violations', 'no_generation_outside_daylight_pass_>=95pct'];
+            let totalChecks = 0;
+            let passedChecks = 0;
+
+            csvData.forEach(row => {
+                passColumns.forEach(col => {
+                    if (row[col] !== undefined && row[col] !== '') {
+                        totalChecks++;
+                        if (row[col] === 'True' || row[col] === true) {
+                            passedChecks++;
+                        }
+                    }
+                });
+            });
+
+            return totalChecks > 0 ? ((passedChecks / totalChecks) * 100).toFixed(1) + '%' : 'N/A';
+        }
+
+        function calculateAverage(column) {
+            const values = csvData.map(r => parseFloat(r[column])).filter(v => !isNaN(v));
+            return values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(4) : 'N/A';
+        }
+
+        function renderCharts() {
+            const container = document.getElementById('chartsContainer');
+
+            // Destroy existing charts
+            Object.values(charts).forEach(chart => chart.destroy());
+            charts = {};
+
+            // Parse dates and numeric values
+            const dates = csvData.map(r => r.date).filter(d => d);
+            const lambdaValues = csvData.map(r => parseFloat(r.lambda_day)).filter(v => !isNaN(v));
+            const nrmseValues = csvData.map(r => parseFloat(r.sinusoidality_nrmse)).filter(v => !isNaN(v));
+            const k1Values = csvData.map(r => parseFloat(r.k1_window)).filter(v => !isNaN(v));
+
+            // Lambda over time
+            container.innerHTML = `
+                <div class="chart-wrapper">
+                    <h3>Lambda (λ) Over Time</h3>
+                    <canvas id="lambdaChart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h3>Sinusoidality NRMSE Over Time</h3>
+                    <canvas id="nrmseChart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h3>K1 Window Parameter</h3>
+                    <canvas id="k1Chart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h3>Pass/Fail Status Over Time</h3>
+                    <canvas id="passFailChart"></canvas>
+                </div>
+            `;
+
+            // Lambda chart
+            charts.lambda = new Chart(document.getElementById('lambdaChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Lambda (λ)',
+                        data: lambdaValues,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: false }
+                    }
+                }
+            });
+
+            // NRMSE chart
+            charts.nrmse = new Chart(document.getElementById('nrmseChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'NRMSE',
+                        data: nrmseValues,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // K1 chart
+            charts.k1 = new Chart(document.getElementById('k1Chart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'K1',
+                        data: k1Values,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: false }
+                    }
+                }
+            });
+
+            // Pass/Fail chart
+            const passFailData = csvData.map(row => {
+                const passes = ['sinusoidality_pass_<=30pct', 'sinusoidality_env_pass_<=30pct'].filter(
+                    col => row[col] === 'True' || row[col] === true
+                ).length;
+                return passes;
+            });
+
+            charts.passFail = new Chart(document.getElementById('passFailChart'), {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Pass Count',
+                        data: passFailData,
+                        backgroundColor: passFailData.map(v => v >= 2 ? 'rgba(39, 174, 96, 0.7)' : 'rgba(231, 76, 60, 0.7)')
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, max: 2 }
+                    }
+                }
+            });
+        }
+
+        function renderTable() {
+            if (filteredData.length === 0) {
+                document.getElementById('tableBody').innerHTML = '<tr><td colspan="100%" style="text-align: center; padding: 40px;">No data to display</td></tr>';
+                return;
+            }
+
+            const headers = Object.keys(filteredData[0]);
+            const thead = document.getElementById('tableHead');
+            thead.innerHTML = '<tr>' + headers.map(h =>
+                `<th onclick="sortTable('${h}')">${h.replace(/_/g, ' ')}</th>`
+            ).join('') + '</tr>';
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = filteredData.map(row => {
+                return '<tr>' + headers.map(header => {
+                    let value = row[header] || '';
+                    let className = '';
+
+                    if (header.includes('pass')) {
+                        className = (value === 'True' || value === true) ? 'pass' :
+                            (value === 'False' || value === false) ? 'fail' : 'empty';
+                        value = value === 'True' || value === true ? '✓ Pass' :
+                            value === 'False' || value === false ? '✗ Fail' : '-';
+                    } else if (value === '') {
+                        className = 'empty';
+                        value = '-';
+                    }
+
+                    return `<td class="${className}">${value}</td>`;
+                }).join('') + '</tr>';
+            }).join('');
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+
+            filteredData.sort((a, b) => {
+                let aVal = a[column] || '';
+                let bVal = b[column] || '';
+
+                // Try numeric comparison
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+
+                // String comparison
+                const comparison = String(aVal).localeCompare(String(bVal));
+                return sortDirection === 'asc' ? comparison : -comparison;
+            });
+
+            // Update header classes
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sorted-asc', 'sorted-desc');
+            });
+            const header = Array.from(document.querySelectorAll('th')).find(
+                th => th.textContent.replace(/\s/g, '_').toLowerCase().includes(column.toLowerCase())
+            );
+            if (header) {
+                header.classList.add(sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+            }
+
+            renderTable();
+        }
+
+        function filterTable() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const passFilter = document.getElementById('passFilter').value;
+
+            filteredData = csvData.filter(row => {
+                // Search filter
+                const matchesSearch = !searchTerm || Object.values(row).some(val =>
+                    String(val).toLowerCase().includes(searchTerm)
+                );
+
+                // Pass/fail filter
+                let matchesPassFilter = true;
+                if (passFilter !== 'all') {
+                    const hasPass = ['sinusoidality_pass_<=30pct', 'sinusoidality_env_pass_<=30pct'].some(
+                        col => row[col] === 'True' || row[col] === true
+                    );
+                    matchesPassFilter = passFilter === 'pass' ? hasPass : !hasPass;
+                }
+
+                return matchesSearch && matchesPassFilter;
+            });
+
+            renderTable();
+        }
+
+        function exportTable() {
+            if (filteredData.length === 0) return;
+
+            const headers = Object.keys(filteredData[0]);
+            const csv = [
+                headers.join(','),
+                ...filteredData.map(row =>
+                    headers.map(h => {
+                        const val = row[h] || '';
+                        return val.includes(',') ? `"${val}"` : val;
+                    }).join(',')
+                )
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'filtered_metrics.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+
+</html>
