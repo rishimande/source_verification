@@ -15,9 +15,8 @@ daily_plot/
 seven_day_envelopes/
 7_day_compressed_sin_fit/
 
-# Data files (optional - uncomment if you don't want to track CSV files)
-# *.csv
-# device_data/*.csv
+# Data files
+device_data/
 
 # IDE
 .vscode/
